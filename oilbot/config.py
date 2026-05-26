@@ -30,7 +30,7 @@ SIGNAL_WEIGHTS = {
     "put_call_ratio": 0.15,
 }
 
-SIGNAL_THRESHOLD = 0.5   # absolute composite score to trigger
+SIGNAL_THRESHOLD = 0.05   # lowered for testing - triggers on small signals
 HEADLINE_LOOKBACK_DAYS = 30
 VOLATILITY_LOOKBACK = 20
 VOLATILITY_BREAKOUT_MULTIPLIER = 2.0
