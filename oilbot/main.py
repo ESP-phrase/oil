@@ -23,8 +23,8 @@ class PaperTrader:
         self.trades = []
 
     def execute(self, direction: str, price: float, conviction: float):
+        qty = size_position(self.capital, price, conviction)
         if direction == "BUY" and self.position <= 0:
-            qty = size_position(self.capital, price, conviction)
             self.position = qty
             self.entry_price = price
             trade = {
@@ -38,6 +38,38 @@ class PaperTrader:
             save_trade(trade)
             self.trades.append(trade)
             print(f"[paper] BUY {qty} CL @ ${price:.2f}")
+        elif direction == "SELL" and self.position >= 0:
+            self.position = -qty
+            self.entry_price = price
+            trade = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "symbol": "CL",
+                "direction": "SELL",
+                "quantity": qty,
+                "entry_price": price,
+                "reason": f"conviction={conviction:.2f}",
+            }
+            save_trade(trade)
+            self.trades.append(trade)
+            print(f"[paper] SELL {qty} CL @ ${price:.2f}")
+        elif direction == "BUY" and self.position < 0:
+            pnl = (self.entry_price - price) * abs(self.position)
+            trade = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "symbol": "CL",
+                "direction": "BUY",
+                "quantity": abs(self.position),
+                "entry_price": self.entry_price,
+                "exit_price": price,
+                "pnl": round(pnl, 2),
+                "reason": f"close short conviction={conviction:.2f}",
+            }
+            save_trade(trade)
+            self.trades.append(trade)
+            self.capital += pnl
+            print(f"[paper] COVER {abs(self.position)} CL @ ${price:.2f} | PnL: ${pnl:.2f}")
+            self.position = 0
+            self.entry_price = 0.0
         elif direction == "SELL" and self.position > 0:
             pnl = (price - self.entry_price) * self.position
             trade = {
@@ -48,7 +80,7 @@ class PaperTrader:
                 "entry_price": self.entry_price,
                 "exit_price": price,
                 "pnl": round(pnl, 2),
-                "reason": f"conviction={conviction:.2f}",
+                "reason": f"close long conviction={conviction:.2f}",
             }
             save_trade(trade)
             self.trades.append(trade)
@@ -60,6 +92,8 @@ class PaperTrader:
     def status(self) -> str:
         if self.position > 0:
             return f"Long {self.position} CL @ ${self.entry_price:.2f} | Capital: ${self.capital:.2f}"
+        if self.position < 0:
+            return f"Short {abs(self.position)} CL @ ${self.entry_price:.2f} | Capital: ${self.capital:.2f}"
         return f"Flat | Capital: ${self.capital:.2f}"
 
 
