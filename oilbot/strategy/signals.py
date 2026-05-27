@@ -67,8 +67,8 @@ def put_call_ratio_signal(pcr: float) -> float:
         return -1.0    # extreme greed → bearish
     return 0.0
 
-def headline_signal(headline_zscore: float) -> float:
-    return np.clip(headline_zscore / 3.0, -1.0, 1.0)
+def headline_signal(headline_score: float) -> float:
+    return max(-1.0, min(1.0, headline_score))
 
 def _atr(df: pd.DataFrame, period: int) -> pd.Series:
     high = df["high"].astype(float)
