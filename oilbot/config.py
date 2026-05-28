@@ -23,14 +23,14 @@ DB_PATH = os.getenv("OILBOT_DB", "oilbot.db")
 
 # ── Strategy weights ─────────────────────────────────────
 SIGNAL_WEIGHTS = {
-    "volatility_breakout": 0.25,
-    "iran_headline_intensity": 0.25,
-    "eia_import_surprise": 0.20,
-    "eia_iran_import": 0.15,
+    "volatility_breakout": 0.20,
+    "iran_headline_intensity": 0.40,
+    "eia_import_surprise": 0.15,
+    "eia_iran_import": 0.10,
     "put_call_ratio": 0.15,
 }
 
-SIGNAL_THRESHOLD = 0.05   # lowered for testing - triggers on small signals
+SIGNAL_THRESHOLD = 0.015   # lowered for testing - triggers on small signals
 HEADLINE_LOOKBACK_DAYS = 30
 VOLATILITY_LOOKBACK = 20
 VOLATILITY_BREAKOUT_MULTIPLIER = 2.0
