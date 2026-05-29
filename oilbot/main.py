@@ -13,6 +13,8 @@ from oilbot.data.news import headline_intensity_score
 from oilbot.data.store import init_db, save_ohlcv, save_signal, save_trade
 from oilbot.strategy.composite import compute_composite_signal, should_trade
 from oilbot.risk.position_sizer import size_position
+from oilbot.api.server import start_server
+from oilbot.api.client import post_trade, post_status, post_signals
 
 
 class PaperTrader:
@@ -37,6 +39,7 @@ class PaperTrader:
             }
             save_trade(trade)
             self.trades.append(trade)
+            post_trade(trade)
             print(f"[paper] BUY {qty} CL @ ${price:.2f}")
         elif direction == "SELL" and self.position >= 0:
             self.position = -qty
@@ -51,13 +54,14 @@ class PaperTrader:
             }
             save_trade(trade)
             self.trades.append(trade)
+            post_trade(trade)
             print(f"[paper] SELL {qty} CL @ ${price:.2f}")
         elif direction == "BUY" and self.position < 0:
             pnl = (self.entry_price - price) * abs(self.position)
             trade = {
                 "timestamp": datetime.utcnow().isoformat(),
                 "symbol": "CL",
-                "direction": "BUY",
+                "direction": "COVER",
                 "quantity": abs(self.position),
                 "entry_price": self.entry_price,
                 "exit_price": price,
@@ -66,6 +70,7 @@ class PaperTrader:
             }
             save_trade(trade)
             self.trades.append(trade)
+            post_trade(trade)
             self.capital += pnl
             print(f"[paper] COVER {abs(self.position)} CL @ ${price:.2f} | PnL: ${pnl:.2f}")
             self.position = 0
@@ -84,6 +89,7 @@ class PaperTrader:
             }
             save_trade(trade)
             self.trades.append(trade)
+            post_trade(trade)
             self.capital += pnl
             print(f"[paper] SELL {self.position} CL @ ${price:.2f} | PnL: ${pnl:.2f}")
             self.position = 0
@@ -95,6 +101,9 @@ class PaperTrader:
         if self.position < 0:
             return f"Short {abs(self.position)} CL @ ${self.entry_price:.2f} | Capital: ${self.capital:.2f}"
         return f"Flat | Capital: ${self.capital:.2f}"
+
+    def api_status(self) -> dict:
+        return {"capital": self.capital, "position": self.position, "entry_price": self.entry_price}
 
 
 def tick(trader: PaperTrader):
@@ -127,12 +136,17 @@ def tick(trader: PaperTrader):
             trader.execute(direction, price, conviction)
         else:
             print(f"[signal] no trade (composite={composite:.3f})")
+
+        post_status(trader.api_status())
+        post_signals(signals)
     except Exception as e:
         print(f"[tick] error: {e}")
 
 
 def main():
     print("=== OilBot Paper Trading ====")
+    start_server()
+    print("[api] Stats server on :5050")
     init_db()
     trader = PaperTrader()
 

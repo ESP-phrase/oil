@@ -15,11 +15,17 @@ from oilbot.data.fetcher import fetch_ohlcv, fetch_eia_imports
 from oilbot.data.news import headline_intensity_score, fetch_iran_headlines
 from oilbot.strategy.composite import compute_composite_signal, should_trade
 from oilbot.risk.position_sizer import size_position
+from oilbot.api.client import get_status, get_trades
 
 st.set_page_config(page_title="OilBot Dashboard", layout="wide")
 st_autorefresh(interval=2_000, key="fastrefresh")
 
 INITIAL_CAPITAL = 100_000.0
+
+# ── Try to connect to local API ────────────────────────
+api_status = get_status()
+api_trades = get_trades()
+using_api = api_status is not None
 
 if "trader" not in st.session_state:
     st.session_state.trader = {
@@ -34,6 +40,11 @@ if "last_price_cache" not in st.session_state:
     st.session_state.last_price_cache = {}
 
 st.title("OilBot — Iran War Scenario Dashboard")
+
+if using_api:
+    st.caption("Connected to local paper trader")
+else:
+    st.caption("Standalone mode (no local bot detected)")
 
 # ── Fetch Data (cached per refresh cycle) ───────────────
 @st.cache_data(ttl=30)
@@ -72,7 +83,8 @@ signal_dict = {}
 if not cl_df.empty:
     composite_val, signal_dict = compute_composite_signal(cl_df, eia_df, headline_z, pcr)
 
-    if now - st.session_state.last_eval > 300:
+    # Local mode: simulate trades in session state
+    if not using_api and now - st.session_state.last_eval > 300:
         st.session_state.last_eval = now
         trade_flag, direction = should_trade(composite_val)
         if trade_flag:
@@ -120,7 +132,19 @@ if not cl_df.empty:
                     "price": price,
                     "pnl": "",
                 })
-    st.session_state.trader = trader
+        st.session_state.trader = trader
+
+# ── Use API data if available ────────────────────────────
+if using_api:
+    api_pos = api_status.get("position", 0)
+    api_cap = api_status.get("capital", INITIAL_CAPITAL)
+    api_entry = api_status.get("entry_price", 0.0)
+else:
+    api_pos = trader["position"]
+    api_cap = trader["capital"]
+    api_entry = trader["entry_price"]
+
+trades_list = api_trades if using_api else trader["trades"]
 
 # ── Price Cards ──────────────────────────────────────────
 cols = st.columns(4)
@@ -196,20 +220,19 @@ else:
     st.info("Set NEWSAPI_KEY in .env to see headlines")
 
 # ── Live PnL ─────────────────────────────────────────────
-st.subheader("📊 Live PnL (updates every 2s)")
-trades = trader["trades"]
+st.subheader("Live PnL (updates every 2s)")
 current_price = float(cl_df["close"].iloc[-1]) if not cl_df.empty else 0
 
-if trades:
-    realized = sum(float(t.get("pnl", 0) or 0) for t in trades if t.get("pnl") != "")
+if trades_list:
+    realized = sum(float(t.get("pnl", 0) or 0) for t in trades_list if t.get("pnl") != "" and t.get("pnl") is not None)
     open_pnl = 0.0
-    if trader["position"] != 0 and current_price:
-        entry = trader["entry_price"]
-        pos = trader["position"]
+    if api_pos != 0 and current_price:
+        entry = api_entry
+        pos = api_pos
         open_pnl = (current_price - entry) * pos if pos > 0 else (entry - current_price) * abs(pos)
     total_pnl = realized + open_pnl
-    wins = sum(1 for t in trades if t.get("pnl") != "" and t.get("pnl") != "" and float(t["pnl"]) > 0)
-    total_closed = sum(1 for t in trades if t.get("pnl") != "")
+    wins = sum(1 for t in trades_list if t.get("pnl") not in ("", None, 0) and float(t.get("pnl", 0) or 0) > 0)
+    total_closed = sum(1 for t in trades_list if t.get("pnl") not in ("", None))
     win_rate = (wins / total_closed * 100) if total_closed > 0 else 0
 
     col_a, col_b, col_c, col_d = st.columns(4)
@@ -218,10 +241,10 @@ if trades:
     col_c.metric("Total PnL", f"${total_pnl:.2f}")
     col_d.metric("Win Rate", f"{win_rate:.0f}%")
 
-    pos_label = f"Long {trader['position']}" if trader["position"] > 0 else f"Short {abs(trader['position'])}" if trader["position"] < 0 else "Flat"
-    st.caption(f"Position: {pos_label} CL @ ${trader['entry_price']:.2f} | Capital: ${trader['capital']:.2f}")
+    pos_label = f"Long {api_pos}" if api_pos > 0 else f"Short {abs(api_pos)}" if api_pos < 0 else "Flat"
+    st.caption(f"Position: {pos_label} CL @ ${api_entry:.2f} | Capital: ${api_cap:.2f}")
 
-    df_trades = pd.DataFrame(trades)
+    df_trades = pd.DataFrame(trades_list)
     st.dataframe(df_trades, width="stretch")
 else:
     st.info("No trades yet. Waiting for signal threshold to be crossed.")
